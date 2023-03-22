@@ -19,7 +19,7 @@ namespace TusDotNetClient
         Sha1Managed,
         SHA1CryptoServiceProvider,
     }
-    
+
     /// <summary>
     /// A class to perform actions against a Tus enabled server.
     /// </summary>
@@ -30,7 +30,7 @@ namespace TusDotNetClient
         /// </summary>
         public static HashingImplementation HashingImplementation { get; set; } =
             HashingImplementation.Sha1Managed;
-        
+
         /// <summary>
         /// A mutable dictionary of headers which will be included with all requests.
         /// </summary>
@@ -49,13 +49,15 @@ namespace TusDotNetClient
         /// <param name="fileInfo">The file which will be uploaded.</param>
         /// <param name="metadata">Metadata to be stored alongside the file.</param>
         /// <returns>The URL to the created file.</returns>
-        /// <exception cref="Exception">Throws if the response doesn't contain the required information.</exception>
+        /// <exception cref="Exception">
+        /// Throws if the response doesn't contain the required information.
+        /// </exception>
         public async Task<string> CreateAsync(string url, FileInfo fileInfo,
             params (string key, string value)[] metadata)
         {
-            if (!metadata.Any(m => m.key == "filename"))
+            if (!metadata.Any(m => m.key.ToLower() == "filename"))
             {
-                metadata = metadata.Concat(new[] {("filename", fileInfo.Name)}).ToArray();
+                metadata = metadata.Concat(new[] { ("filename", fileInfo.Name) }).ToArray();
             }
 
             return await CreateAsync(url, fileInfo.Length, metadata);
@@ -68,7 +70,9 @@ namespace TusDotNetClient
         /// <param name="uploadLength">The byte size of the file which will be uploaded.</param>
         /// <param name="metadata">Metadata to be stored alongside the file.</param>
         /// <returns>The URL to the created file.</returns>
-        /// <exception cref="Exception">Throws if the response doesn't contain the required information.</exception>
+        /// <exception cref="Exception">
+        /// Throws if the response doesn't contain the required information.
+        /// </exception>
         public async Task<string> CreateAsync(string url, long uploadLength,
             params (string key, string value)[] metadata)
         {
@@ -109,6 +113,99 @@ namespace TusDotNetClient
         }
 
         /// <summary>
+        /// Delete a file from the Tus server.
+        /// </summary>
+        /// <param name="url">The URL of the file at the Tus server.</param>
+        /// <returns>A <see cref="bool"/> indicating whether the file is deleted.</returns>
+        public async Task<bool> Delete(string url)
+        {
+            var client = new TusHttpClient();
+            var request = new TusHttpRequest(url, RequestMethod.Delete, AdditionalHeaders);
+
+            var response = await client.PerformRequestAsync(request)
+                .ConfigureAwait(false);
+
+            return response.StatusCode == HttpStatusCode.NoContent ||
+                   response.StatusCode == HttpStatusCode.NotFound ||
+                   response.StatusCode == HttpStatusCode.Gone;
+        }
+
+        /// <summary>
+        /// Download a file from the Tus server.
+        /// </summary>
+        /// <param name="url">The URL of a file at the Tus server.</param>
+        /// <param name="cancellationToken">A cancellation token to cancel the operation with.</param>
+        /// <returns>A <see cref="TusOperation{T}"/> which represents the download operation.</returns>
+        public TusOperation<TusHttpResponse> DownloadAsync(string url, CancellationToken cancellationToken = default) =>
+            new TusOperation<TusHttpResponse>(
+                async reportProgress =>
+                {
+                    var client = new TusHttpClient();
+                    var request = new TusHttpRequest(
+                        url,
+                        RequestMethod.Get,
+                        AdditionalHeaders,
+                        cancelToken: cancellationToken);
+
+                    request.DownloadProgressed += reportProgress;
+
+                    var response = await client.PerformRequestAsync(request)
+                        .ConfigureAwait(false);
+
+                    request.DownloadProgressed -= reportProgress;
+
+                    return response;
+                });
+
+        /// <summary>
+        /// Get information about the Tus server.
+        /// </summary>
+        /// <param name="url">The URL of the Tus enabled endpoint.</param>
+        /// <returns>A <see cref="TusServerInfo"/> containing information about the Tus server.</returns>
+        /// <exception cref="Exception">Throws if request fails.</exception>
+        public async Task<TusServerInfo> GetServerInfo(string url)
+        {
+            var client = new TusHttpClient();
+            var request = new TusHttpRequest(url, RequestMethod.Options, AdditionalHeaders);
+
+            var response = await client.PerformRequestAsync(request)
+                .ConfigureAwait(false);
+
+            // Spec says NoContent but tusd gives OK because of browser bugs
+            if (response.StatusCode != HttpStatusCode.NoContent && response.StatusCode != HttpStatusCode.OK)
+                throw new Exception("getServerInfo failed. " + response.ResponseString);
+
+            response.Headers.TryGetValue(TusHeaderNames.TusResumable, out var version);
+            response.Headers.TryGetValue(TusHeaderNames.TusVersion, out var supportedVersions);
+            response.Headers.TryGetValue(TusHeaderNames.TusExtension, out var extensions);
+            response.Headers.TryGetValue(TusHeaderNames.TusMaxSize, out var maxSizeString);
+            response.Headers.TryGetValue(TusHeaderNames.TusChecksumAlgorithm, out var checksumAlgorithms);
+            long.TryParse(maxSizeString, out var maxSize);
+            return new TusServerInfo(version, supportedVersions, extensions, maxSize, checksumAlgorithms);
+        }
+
+        /// <summary>
+        /// Send a HEAD request to the Tus server.
+        /// </summary>
+        /// <param name="url">The endpoint to post the HEAD request to.</param>
+        /// <returns>The response from the Tus server.</returns>
+        public async Task<TusHttpResponse> HeadAsync(string url)
+        {
+            var client = new TusHttpClient();
+            var request = new TusHttpRequest(url, RequestMethod.Head, AdditionalHeaders);
+
+            try
+            {
+                return await client.PerformRequestAsync(request)
+                    .ConfigureAwait(false);
+            }
+            catch (TusException ex)
+            {
+                return new TusHttpResponse(ex.StatusCode);
+            }
+        }
+
+        /// <summary>
         /// Upload a file to the Tus server.
         /// </summary>
         /// <param name="url">URL to a previously created file.</param>
@@ -141,7 +238,9 @@ namespace TusDotNetClient
         /// Upload a file to the Tus server.
         /// </summary>
         /// <param name="url">URL to a previously created file.</param>
-        /// <param name="fileStream">A file stream of the file to upload. The stream will be closed automatically.</param>
+        /// <param name="fileStream">
+        /// A file stream of the file to upload. The stream will be closed automatically.
+        /// </param>
         /// <param name="chunkSize">The size, in megabytes, of each file chunk when uploading.</param>
         /// <param name="cancellationToken">A cancellation token to cancel the operation with.</param>
         /// <returns>A <see cref="TusOperation{T}"/> which represents the upload operation.</returns>
@@ -161,7 +260,7 @@ namespace TusDotNetClient
 
                         var client = new TusHttpClient();
                         var sha = HashingImplementation == HashingImplementation.Sha1Managed
-                            ? (SHA1) new SHA1Managed()
+                            ? (SHA1)new SHA1Managed()
                             : new SHA1CryptoServiceProvider();
 
                         var uploadChunkSize = ChunkSizeToMB(chunkSize);
@@ -206,7 +305,7 @@ namespace TusDotNetClient
 
                                 offset = long.Parse(response.Headers[TusHeaderNames.UploadOffset]);
 
-                                //                            reportProgress(offset, fileStream.Length);
+                                // reportProgress(offset, fileStream.Length);
                             }
                             catch (IOException ex)
                             {
@@ -214,8 +313,8 @@ namespace TusDotNetClient
                                 {
                                     if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                                     {
-                                        // retry by continuing the while loop
-                                        // but get new offset from server to prevent Conflict error
+                                        // retry by continuing the while loop but get new offset
+                                        // from server to prevent Conflict error
                                         offset = await GetFileOffset(url)
                                             .ConfigureAwait(false);
                                     }
@@ -240,97 +339,9 @@ namespace TusDotNetClient
                 });
         }
 
-        /// <summary>
-        /// Download a file from the Tus server.
-        /// </summary>
-        /// <param name="url">The URL of a file at the Tus server.</param>
-        /// <param name="cancellationToken">A cancellation token to cancel the operation with.</param>
-        /// <returns>A <see cref="TusOperation{T}"/> which represents the download operation.</returns>
-        public TusOperation<TusHttpResponse> DownloadAsync(string url, CancellationToken cancellationToken = default) =>
-            new TusOperation<TusHttpResponse>(
-                async reportProgress =>
-                {
-                    var client = new TusHttpClient();
-                    var request = new TusHttpRequest(
-                        url,
-                        RequestMethod.Get,
-                        AdditionalHeaders,
-                        cancelToken: cancellationToken);
-
-                    request.DownloadProgressed += reportProgress;
-
-                    var response = await client.PerformRequestAsync(request)
-                        .ConfigureAwait(false);
-
-                    request.DownloadProgressed -= reportProgress;
-
-                    return response;
-                });
-
-        /// <summary>
-        /// Send a HEAD request to the Tus server.
-        /// </summary>
-        /// <param name="url">The endpoint to post the HEAD request to.</param>
-        /// <returns>The response from the Tus server.</returns>
-        public async Task<TusHttpResponse> HeadAsync(string url)
+        private static int ChunkSizeToMB(double chunkSize)
         {
-            var client = new TusHttpClient();
-            var request = new TusHttpRequest(url, RequestMethod.Head, AdditionalHeaders);
-
-            try
-            {
-                return await client.PerformRequestAsync(request)
-                    .ConfigureAwait(false);
-            }
-            catch (TusException ex)
-            {
-                return new TusHttpResponse(ex.StatusCode);
-            }
-        }
-
-        /// <summary>
-        /// Get information about the Tus server.
-        /// </summary>
-        /// <param name="url">The URL of the Tus enabled endpoint.</param>
-        /// <returns>A <see cref="TusServerInfo"/> containing information about the Tus server.</returns>
-        /// <exception cref="Exception">Throws if request fails.</exception>
-        public async Task<TusServerInfo> GetServerInfo(string url)
-        {
-            var client = new TusHttpClient();
-            var request = new TusHttpRequest(url, RequestMethod.Options, AdditionalHeaders);
-
-            var response = await client.PerformRequestAsync(request)
-                .ConfigureAwait(false);
-
-            // Spec says NoContent but tusd gives OK because of browser bugs
-            if (response.StatusCode != HttpStatusCode.NoContent && response.StatusCode != HttpStatusCode.OK)
-                throw new Exception("getServerInfo failed. " + response.ResponseString);
-
-            response.Headers.TryGetValue(TusHeaderNames.TusResumable, out var version);
-            response.Headers.TryGetValue(TusHeaderNames.TusVersion, out var supportedVersions);
-            response.Headers.TryGetValue(TusHeaderNames.TusExtension, out var extensions);
-            response.Headers.TryGetValue(TusHeaderNames.TusMaxSize, out var maxSizeString);
-            response.Headers.TryGetValue(TusHeaderNames.TusChecksumAlgorithm, out var checksumAlgorithms);
-            long.TryParse(maxSizeString, out var maxSize);
-            return new TusServerInfo(version, supportedVersions, extensions, maxSize, checksumAlgorithms);
-        }
-
-        /// <summary>
-        /// Delete a file from the Tus server.
-        /// </summary>
-        /// <param name="url">The URL of the file at the Tus server.</param>
-        /// <returns>A <see cref="bool"/> indicating whether the file is deleted.</returns>
-        public async Task<bool> Delete(string url)
-        {
-            var client = new TusHttpClient();
-            var request = new TusHttpRequest(url, RequestMethod.Delete, AdditionalHeaders);
-
-            var response = await client.PerformRequestAsync(request)
-                .ConfigureAwait(false);
-
-            return response.StatusCode == HttpStatusCode.NoContent ||
-                   response.StatusCode == HttpStatusCode.NotFound ||
-                   response.StatusCode == HttpStatusCode.Gone;
+            return (int)Math.Ceiling(chunkSize * 1024.0 * 1024.0);
         }
 
         private async Task<long> GetFileOffset(string url)
@@ -348,11 +359,6 @@ namespace TusDotNetClient
                 throw new Exception("Offset Header Missing");
 
             return long.Parse(response.Headers[TusHeaderNames.UploadOffset]);
-        }
-
-        private static int ChunkSizeToMB(double chunkSize)
-        {
-            return (int) Math.Ceiling(chunkSize * 1024.0 * 1024.0);
         }
     }
 }

@@ -11,23 +11,6 @@ namespace TusDotNetClient
     public class TusHttpResponse
     {
         /// <summary>
-        /// Get the HTTP status code from the Tus server.
-        /// </summary>
-        public HttpStatusCode StatusCode { get; }
-        /// <summary>
-        /// Get the HTTP headers from the response.
-        /// </summary>
-        public IReadOnlyDictionary<string, string> Headers { get; }
-        /// <summary>
-        /// Get the content of the HTTP response as bytes.
-        /// </summary>
-        public byte[] ResponseBytes { get; }
-        /// <summary>
-        /// Get the content of the HTTP response as a <see cref="string"/>.
-        /// </summary>
-        public string ResponseString => Encoding.UTF8.GetString(ResponseBytes);
-
-        /// <summary>
         /// Create an instance of a <see cref="TusHttpResponse"/>.
         /// </summary>
         /// <param name="statusCode">The HTTP status code of the response.</param>
@@ -40,9 +23,29 @@ namespace TusDotNetClient
         {
             StatusCode = statusCode;
             Headers = headers is null
-                ? new Dictionary<string, string>(0)
-                : new Dictionary<string, string>(headers);
+                ? new Dictionary<string, string>(0, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(headers, StringComparer.OrdinalIgnoreCase);
             ResponseBytes = responseBytes;
         }
+
+        /// <summary>
+        /// Get the HTTP headers from the response.
+        /// </summary>
+        public IReadOnlyDictionary<string, string> Headers { get; }
+
+        /// <summary>
+        /// Get the content of the HTTP response as bytes.
+        /// </summary>
+        public byte[] ResponseBytes { get; }
+
+        /// <summary>
+        /// Get the content of the HTTP response as a <see cref="string"/>.
+        /// </summary>
+        public string ResponseString => Encoding.UTF8.GetString(ResponseBytes);
+
+        /// <summary>
+        /// Get the HTTP status code from the Tus server.
+        /// </summary>
+        public HttpStatusCode StatusCode { get; }
     }
 }
