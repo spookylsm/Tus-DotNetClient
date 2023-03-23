@@ -3,13 +3,13 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>TusDotNetClient</RootNamespace>
     <AssemblyName>TusDotNetClient</AssemblyName>
-    <PackageId>TusDotNetClient</PackageId>
-    <Authors>jonstodle</Authors>
+    <PackageId>Tus-DotNetClient</PackageId>
+    <Authors>spookylsm</Authors>
     <Description>A client library for interacting with a Tus enabled server.</Description>
-    <RepositoryUrl>https://github.com/jonstodle/TusDotNetClient</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/jonstodle/TusDotNetClient</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/spookylsm/Tus-DotNetClient</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/spookylsm/Tus-DotNetClient</PackageProjectUrl>
     <License>MIT</License>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.0</Version>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 </Project>
