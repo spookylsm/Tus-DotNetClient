@@ -1,10 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net;
-using System.Text;
-
-namespace TusDotNetClient
+﻿namespace TusDotNetClient
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Net;
+    using System.Text;
+
     /// <summary>
     /// Represents a response from a request made to a Tus enabled server.
     /// </summary>

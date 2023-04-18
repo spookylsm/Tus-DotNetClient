@@ -1,9 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading;
-
-namespace TusDotNetClient
+﻿namespace TusDotNetClient
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Threading;
+
     /// <summary>
     /// HTTP methods supported by <see cref="TusDotNetClient"/>
     /// </summary>
