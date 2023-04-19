@@ -1,8 +1,8 @@
-using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
-
 namespace TusDotNetClient
 {
+    using System.Runtime.CompilerServices;
+    using System.Threading.Tasks;
+
     /// <summary>
     /// A delegate used for reporting progress of a transfer of bytes.
     /// </summary>
@@ -11,13 +11,23 @@ namespace TusDotNetClient
     public delegate void ProgressDelegate(long bytesTransferred, long bytesTotal);
 
     /// <summary>
-    /// Represents an operation against a Tus enabled server. <see cref="TusOperation{T}"/> supports progress reports.
+    /// Represents an operation against a Tus enabled server. <see cref="TusOperation{T}"/> supports
+    /// progress reports.
     /// </summary>
     /// <typeparam name="T">The type of the operation result.</typeparam>
     public class TusOperation<T>
     {
         private readonly OperationDelegate _operation;
         private Task<T> _operationTask;
+
+        /// <summary>
+        /// Create an instance of a <see cref="TusOperation{T}"/>
+        /// </summary>
+        /// <param name="operation">The operation to perform.</param>
+        internal TusOperation(OperationDelegate operation)
+        {
+            _operation = operation;
+        }
 
         /// <summary>
         /// Represents an operation which receives a delegate to report transfer progress to.
@@ -37,15 +47,6 @@ namespace TusDotNetClient
             _operationTask ??
             (_operationTask = _operation((transferred, total) =>
                 Progressed?.Invoke(transferred, total)));
-
-        /// <summary>
-        /// Create an instance of a <see cref="TusOperation{T}"/>
-        /// </summary>
-        /// <param name="operation">The operation to perform.</param>
-        internal TusOperation(OperationDelegate operation)
-        {
-            _operation = operation;
-        }
 
         /// <summary>
         /// Gets an awaiter used to initiate and await the operation.

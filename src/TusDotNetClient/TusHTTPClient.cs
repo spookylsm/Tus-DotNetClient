@@ -1,12 +1,12 @@
-﻿using System;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace TusDotNetClient
+﻿namespace TusDotNetClient
 {
+    using System;
+    using System.IO;
+    using System.Linq;
+    using System.Net;
+    using System.Threading;
+    using System.Threading.Tasks;
+
     /// <summary>
     /// A class to execute requests against a Tus enabled server.
     /// </summary>
@@ -64,9 +64,11 @@ namespace TusDotNetClient
                         case TusHeaderNames.ContentLength:
                             webRequest.ContentLength = long.Parse(header.Value);
                             break;
+
                         case TusHeaderNames.ContentType:
                             webRequest.ContentType = header.Value;
                             break;
+
                         default:
                             webRequest.Headers.Add(header.Key, header.Value);
                             break;
@@ -101,7 +103,7 @@ namespace TusDotNetClient
                     }
                 }
 
-                var response = (HttpWebResponse) await webRequest.GetResponseAsync()
+                var response = (HttpWebResponse)await webRequest.GetResponseAsync()
                     .ConfigureAwait(false);
 
                 //contentLength=0 for gzipped responses due to .net bug
