@@ -1,11 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
-
 namespace TusDotNetClientTests
 {
+    using System;
+    using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.IO;
+    using System.Linq;
+
     public class Fixture : IDisposable
     {
         private readonly Process _tusProcess;
@@ -39,13 +39,7 @@ namespace TusDotNetClientTests
 
         public Fixture()
         {
-            _tusProcess = Process.Start(new DirectoryInfo(Directory.GetCurrentDirectory())
-                                            .Parent?
-                                            .Parent?
-                                            .Parent?
-                                            .EnumerateFiles("tusd*")
-                                            .FirstOrDefault()?
-                                            .FullName ??
+            _tusProcess = Process.Start(new DirectoryInfo(Directory.GetCurrentDirectory()).EnumerateFiles("tusd*exe").FirstOrDefault().FullName ??
                                         throw new ArgumentException(
                                             "tusd executable must be present in test project directory"));
         }
