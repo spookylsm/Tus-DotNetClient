@@ -1,4 +1,4 @@
-# TusDotNetClient
+# Tus-DotNetClient
 .Net client for [tus.io](http://tus.io/) Resumable File Upload protocol.
 
 ## Features
