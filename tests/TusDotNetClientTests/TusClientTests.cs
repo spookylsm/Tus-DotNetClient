@@ -1,13 +1,13 @@
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
-using FluentAssertions;
-using TusDotNetClient;
-using Xunit;
-using static TusDotNetClientTests.Utils;
-
 namespace TusDotNetClientTests
 {
+    using System.IO;
+    using System.Linq;
+    using System.Threading.Tasks;
+    using FluentAssertions;
+    using TusDotNetClient;
+    using Xunit;
+    using static TusDotNetClientTests.Utils;
+
     public class TusClientTests : IClassFixture<Fixture>
     {
         private const string TusEndpoint = @"http://localhost:1080/files/";
