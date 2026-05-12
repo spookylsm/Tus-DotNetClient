@@ -23,7 +23,7 @@
     /// <summary>
     /// A class to perform actions against a Tus enabled server.
     /// </summary>
-    public class TusClient
+    public class TusClient : ITusClient
     {
         /// <summary>
         /// Get or set the hashing algorithm implementation to be used for checksum calculation.
@@ -144,24 +144,23 @@
         /// <param name="cancellationToken">A cancellation token to cancel the operation with.</param>
         /// <returns>A <see cref="TusOperation{T}"/> which represents the download operation.</returns>
         public TusOperation<TusHttpResponse> DownloadAsync(string url, CancellationToken cancellationToken = default) =>
-            new TusOperation<TusHttpResponse>(
-                async reportProgress =>
-                {
-                    var client = new TusHttpClient();
-                    var request = new TusHttpRequest(
-                        url,
-                        RequestMethod.Get,
-                        AdditionalHeaders,
-                        cancelToken: cancellationToken);
+            new TusOperation<TusHttpResponse>(async reportProgress =>
+            {
+                var client = new TusHttpClient();
+                var request = new TusHttpRequest(
+                    url,
+                    RequestMethod.Get,
+                    AdditionalHeaders,
+                    cancelToken: cancellationToken);
 
-                    request.DownloadProgressed += reportProgress;
+                request.DownloadProgressed += reportProgress;
 
-                    var response = await client.PerformRequestAsync(request).ConfigureAwait(false);
+                var response = await client.PerformRequestAsync(request).ConfigureAwait(false);
 
-                    request.DownloadProgressed -= reportProgress;
+                request.DownloadProgressed -= reportProgress;
 
-                    return response;
-                });
+                return response;
+            });
 
         /// <summary>
         /// Get information about the Tus server.
@@ -257,92 +256,91 @@
             double chunkSize = 5.0,
             CancellationToken cancellationToken = default)
         {
-            return new TusOperation<List<TusHttpResponse>>(
-                async reportProgress =>
+            return new TusOperation<List<TusHttpResponse>>(async reportProgress =>
+            {
+                try
                 {
-                    try
+                    var offset = await GetFileOffset(url)
+                        .ConfigureAwait(false);
+
+                    var client = new TusHttpClient();
+                    var sha = HashingImplementation == HashingImplementation.Sha1Managed
+                        ? (SHA1)new SHA1Managed()
+                        : new SHA1CryptoServiceProvider();
+
+                    var uploadChunkSize = ChunkSizeToMB(chunkSize);
+
+                    if (offset == fileStream.Length)
+                        reportProgress(fileStream.Length, fileStream.Length);
+
+                    var buffer = new byte[uploadChunkSize];
+
+                    void OnProgress(long written, long total) =>
+                        reportProgress(offset + written, fileStream.Length);
+
+                    var responses = new List<TusHttpResponse>();
+
+                    while (offset < fileStream.Length)
                     {
-                        var offset = await GetFileOffset(url)
-                            .ConfigureAwait(false);
+                        fileStream.Seek(offset, SeekOrigin.Begin);
 
-                        var client = new TusHttpClient();
-                        var sha = HashingImplementation == HashingImplementation.Sha1Managed
-                            ? (SHA1)new SHA1Managed()
-                            : new SHA1CryptoServiceProvider();
+                        var bytesRead = await fileStream.ReadAsync(buffer, 0, uploadChunkSize, cancellationToken);
+                        var segment = new ArraySegment<byte>(buffer, 0, bytesRead);
+                        var sha1Hash = sha.ComputeHash(buffer, 0, bytesRead);
 
-                        var uploadChunkSize = ChunkSizeToMB(chunkSize);
+                        var request = new TusHttpRequest(url, RequestMethod.Patch, AdditionalHeaders, segment,
+                            cancellationToken);
+                        request.AddHeader(TusHeaderNames.UploadOffset, offset.ToString());
+                        request.AddHeader(TusHeaderNames.UploadChecksum,
+                            $"sha1 {Convert.ToBase64String(sha1Hash)}");
+                        request.AddHeader(TusHeaderNames.ContentType, "application/offset+octet-stream");
 
-                        if (offset == fileStream.Length)
-                            reportProgress(fileStream.Length, fileStream.Length);
-
-                        var buffer = new byte[uploadChunkSize];
-
-                        void OnProgress(long written, long total) =>
-                            reportProgress(offset + written, fileStream.Length);
-
-                        List<TusHttpResponse> responses = new List<TusHttpResponse>();
-
-                        while (offset < fileStream.Length)
+                        try
                         {
-                            fileStream.Seek(offset, SeekOrigin.Begin);
+                            request.UploadProgressed += OnProgress;
+                            var response = await client.PerformRequestAsync(request)
+                                .ConfigureAwait(false);
+                            responses.Add(response);
+                            request.UploadProgressed -= OnProgress;
 
-                            var bytesRead = await fileStream.ReadAsync(buffer, 0, uploadChunkSize);
-                            var segment = new ArraySegment<byte>(buffer, 0, bytesRead);
-                            var sha1Hash = sha.ComputeHash(buffer, 0, bytesRead);
-
-                            var request = new TusHttpRequest(url, RequestMethod.Patch, AdditionalHeaders, segment,
-                                cancellationToken);
-                            request.AddHeader(TusHeaderNames.UploadOffset, offset.ToString());
-                            request.AddHeader(TusHeaderNames.UploadChecksum,
-                                $"sha1 {Convert.ToBase64String(sha1Hash)}");
-                            request.AddHeader(TusHeaderNames.ContentType, "application/offset+octet-stream");
-
-                            try
+                            if (response.StatusCode != HttpStatusCode.NoContent)
                             {
-                                request.UploadProgressed += OnProgress;
-                                var response = await client.PerformRequestAsync(request)
-                                    .ConfigureAwait(false);
-                                responses.Add(response);
-                                request.UploadProgressed -= OnProgress;
-
-                                if (response.StatusCode != HttpStatusCode.NoContent)
-                                {
-                                    throw new Exception("WriteFileInServer failed. " + response.ResponseString);
-                                }
-
-                                offset = long.Parse(response.Headers[TusHeaderNames.UploadOffset]);
-
-                                // reportProgress(offset, fileStream.Length);
+                                throw new Exception("WriteFileInServer failed. " + response.ResponseString);
                             }
-                            catch (IOException ex)
+
+                            offset = long.Parse(response.Headers[TusHeaderNames.UploadOffset]);
+
+                            // reportProgress(offset, fileStream.Length);
+                        }
+                        catch (IOException ex)
+                        {
+                            if (ex.InnerException is SocketException socketException)
                             {
-                                if (ex.InnerException is SocketException socketException)
+                                if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                                 {
-                                    if (socketException.SocketErrorCode == SocketError.ConnectionReset)
-                                    {
-                                        // retry by continuing the while loop but get new offset
-                                        // from server to prevent Conflict error
-                                        offset = await GetFileOffset(url).ConfigureAwait(false);
-                                    }
-                                    else
-                                    {
-                                        throw;
-                                    }
+                                    // retry by continuing the while loop but get new offset
+                                    // from server to prevent Conflict error
+                                    offset = await GetFileOffset(url).ConfigureAwait(false);
                                 }
                                 else
                                 {
                                     throw;
                                 }
                             }
+                            else
+                            {
+                                throw;
+                            }
                         }
+                    }
 
-                        return responses;
-                    }
-                    finally
-                    {
-                        fileStream.Dispose();
-                    }
-                });
+                    return responses;
+                }
+                finally
+                {
+                    fileStream.Dispose();
+                }
+            });
         }
 
         private static int ChunkSizeToMB(double chunkSize)
